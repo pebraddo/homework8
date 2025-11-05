@@ -1,0 +1,44 @@
+---
+title: "Homework 8 Basic Modeling Practice"
+author: "Powell Braddock, ST 558"
+format: html
+editor: visual
+---
+
+Variables of Interest:
+
+• Date : day/month/year
+
+• Rented Bike count - Count of bikes rented at each hour
+
+• Hour - Hour of the day
+
+• Temperature-Temperature in Celsius
+
+• Humidity - %
+
+• Windspeed - m/s
+
+• Visibility - 10m
+
+• Dew point temperature - Celsius
+
+• Solar radiation - MJ/m2
+
+• Rainfall - mm
+
+• Snowfall - cm
+
+• Seasons - Winter, Spring, Summer, Autumn
+
+• Holiday - Holiday/No holiday
+
+• Functional Day - NoFunc(Non Functional Hours), Fun(Functional hours)
+
+```{r}
+library(tidyverse)
+
+#originally got an error: what I think came from the degree symbol in one of the attributes.  the wild internet provided the locale = latin1 solution!
+seoul_bike_data <- read_csv('https://www4.stat.ncsu.edu/~online/datasets/SeoulBikeData.csv', locale = locale(encoding = 'latin1'))
+seoul_bike_data
+```
