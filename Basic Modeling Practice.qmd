@@ -35,6 +35,8 @@ Variables of Interest:
 
 • Functional Day - NoFunc(Non Functional Hours), Fun(Functional hours)
 
+## Reading in the Data
+
 ```{r}
 library(tidyverse)
 
@@ -42,3 +44,134 @@ library(tidyverse)
 seoul_bike_data <- read_csv('https://www4.stat.ncsu.edu/~online/datasets/SeoulBikeData.csv', locale = locale(encoding = 'latin1'))
 seoul_bike_data
 ```
+
+## EDA
+
+Checking the Data
+
+You should have a narrative through what you are doing here! Don’t just put the steps with text verbatim. Practice writing! Steps you should definitely do:
+
+1\. Check for missingness
+
+```{r}
+sum_na <- function(column){
+  sum(is.na(column) + is.null(column) + is.nan(column))
+}
+na_counts <- seoul_bike_data |>
+  summarize(across(everything(), sum_na))
+na_counts
+```
+
+2\. Check the column types and the values within the columns to make sure they make sense (basic summary stats for numeric columns and check the unique values for the categorical variables).
+
+```{r}
+library(psych)
+psych::describe(seoul_bike_data)
+```
+
+3\. Convert the Date column into an actual date (if need be). Recall the lubridate package.
+
+```{r}
+library(lubridate)
+seoul_bike_date <-
+  seoul_bike_data |> mutate(Date = dmy(Date))
+```
+
+4\. Turn the character variables (Seasons, Holiday, and Functioning Day) into factors.
+
+```{r}
+seoul_bike_data<-
+seoul_bike_data |>
+  mutate(Seasons = as.factor(Seasons),
+         Holiday = as.factor(Holiday),
+         `Functioning Day` = as.factor(`Functioning Day`)) |>
+  rename('date'='Date',
+         'rented_bike_count' = 'Rented Bike Count',
+         'hour' = 'Hour',
+         'celcius_temp' = 'Temperature(°C)',
+         'percent_humidity'='Humidity(%)',
+         'wind_speed'= 'Wind speed (m/s)',
+         'visib'='Visibility (10m)',
+         'dew_point_temp' = 'Dew point temperature(°C)',
+         'solar_rad'='Solar Radiation (MJ/m2)',
+         'rainfall' = 'Rainfall(mm)',
+         'snowfall' = 'Snowfall (cm)',
+         'seasons' = 'Seasons',
+         'holiday' = 'Holiday',
+         'function_day' = 'Functioning Day')
+```
+
+5\. Lastly, rename all the variables to have easy to use names (I use lower snake case but whatever you’d like is fine)
+
+6\. Create summary statistics (especially related to the bike rental count). These should be done across your categorical variables as well. You should notice something about the Functioning Day variable. Subset the data appropriately based on that.
+
+```{r}
+seoul_bike_data |>
+  group_by(function_day) |>
+  summarize(across(rented_bike_count, .fns = list("mean" = mean, 
+                                       "median" = median, 
+                                       "var" = var, 
+                                       "sd" = sd, 
+                                       "IQR" = IQR), .names = "{.fn} {.col}"))
+```
+
+```{r}
+seoul_bike_data |>
+  group_by(seasons, holiday) |>
+  filter(function_day == 'Yes') |>
+  summarize(across(rented_bike_count, .fns = list("mean" = mean, 
+                                       "median" = median, 
+                                       "var" = var, 
+                                       "sd" = sd, 
+                                       "IQR" = IQR), .names = "{.fn} {.col}"))
+```
+
+7\. To simplify our analysis, we’ll summarize across the hours so that each day has one observation associated with it.
+
+• (I’m using my new names here. Your names may not match and that’s ok!) Let’s group_by() the date, seasons, and holiday variables.
+
+• Find the sum of the bike_count, rainfall, and snowfall variables
+
+• Find the mean of all the weather related variables.
+
+• This will be our new data that we’ll analyze!
+
+8\. Recreate your basic summary stats and then create some plots to explore relationships. Report correlation between your numeric variables as well. Again, you should have a narrative throughout this!
+
+# Split the Data
+
+• Use functions from tidymodels to split the data into a training and test set (75/25 split). Use the strata argument to stratify the split on the seasons variable.
+
+• On the training set, create a 10 fold CV split
+
+# Fitting MLR Models
+
+First, let’s create some recipes. For the 1st recipe:
+
+• Let’s ignore the date variable for modeling (so we’ll need to remove that or give it a different ID) but use it to create a weekday/weekend (factor) variable. (See step 2 of the shinymodels tutorial! You can use step_date() then step_mutate() with a factor(if_else(...)) to create the variable. I then had to remove the intermediate variable created.)
+
+• Let’s standardize the numeric variables since their scales are pretty different.
+
+• Let’s create dummy variables for the seasons, holiday, and our new day type variable
+
+For the 2nd recipe:
+
+• Do the same steps as above.
+
+• Add in interactions between seasons and holiday, seasons and temp, temp and rainfall. For the seasons interactions, you can use starts_with() to create the proper interactions.
+
+For the 3rd recipe:
+
+• Do the same as the 2nd recipe.
+
+• Add in quadratic terms for each numeric predictor
+
+Now set up our linear model fit to use the “lm” engine.
+
+Fit the models using 10 fold CV via fit_resamples() and consider the training set CV error to choose a best model.
+
+Using your ‘best’ model, fit the model to the entire training data set (use the last_fit() function).
+
+• Compute the RMSE metric on the test set.
+
+• Obtain the final model (fit on the entire training set) coefficient table using extract_fit_parsnip() and tidy().
