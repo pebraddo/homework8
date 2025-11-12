@@ -232,14 +232,70 @@ ggplot(new_bike_data,
 • Use functions from tidymodels to split the data into a training and test set (75/25 split). Use the strata argument to stratify the split on the seasons variable.
 
 ```{r}
-##library(tidymodels)
-##seoul_data <- initial_split(new_bike_data, prop = 0.75)
-##seoul_train <- training(seoul_data)
-##seoul_test <- testing(seoul_data)
-
+library(tidymodels)
+seoul_data <- initial_split(new_bike_data, prop = 0.75, strata=seasons)
+seoul_train <- training(seoul_data)
+seoul_train
+seoul_test <- testing(seoul_data)
+seoul_test
 ```
 
 • On the training set, create a 10 fold CV split
+
+```{r}
+nrow(seoul_train)
+size_fold <- floor(nrow(seoul_train)/10)
+size_fold
+set.seed(8)
+random_indices <- sample(1:nrow(seoul_train), size = nrow(seoul_train), replace = FALSE)
+#see the random reordering
+head(random_indices)
+#create a list to save our folds in
+folds <- list()
+#now cycle through our random indices vector and take the appropriate observations to each fold
+#you may want to set i to 1 and run the arguments to from and to in the seq() function
+#change i to 2 and do the same thing to see how this works
+for(i in 1:10){
+  if (i < 10) {
+    fold_index <- seq(from = (i-1)*size_fold +1, to = i*size_fold, by = 1)
+    folds[[i]] <- seoul_train[random_indices[fold_index], ]
+  } else { #for i = 10 we need to have 1 more observation 
+    fold_index <- seq(from = (i-1)*size_fold +1, to = length(random_indices), by = 1)
+    folds[[i]] <- seoul_train[random_indices[fold_index], ]
+  }
+}
+folds[[1]]
+folds[[2]]
+```
+
+```{r}
+get_cv_splits <- function(data, num_folds){
+  #get fold size
+  size_fold <- floor(nrow(data)/num_folds)
+  #get random indices to subset the data with
+  random_indices <- sample(1:nrow(data), size = nrow(data), replace = FALSE)
+  #create a list to save our folds in
+  folds <- list()
+  #now cycle through our random indices vector and take the appropriate observations to each fold
+  for(i in 1:num_folds){
+    if (i < num_folds) {
+      fold_index <- seq(from = (i-1)*size_fold +1, to = i*size_fold, by = 1)
+      folds[[i]] <- data[random_indices[fold_index], ]
+    } else {
+      fold_index <- seq(from = (i-1)*size_fold +1, to = length(random_indices), by = 1)
+      folds[[i]] <- data[random_indices[fold_index], ]
+    }
+  }
+  return(folds)
+}
+folds <- get_cv_splits(seoul_train, 10)
+```
+
+```{r}
+#training data
+train_list <- folds
+length(train_list)
+```
 
 # Fitting MLR Models
 
@@ -251,11 +307,56 @@ First, let’s create some recipes. For the 1st recipe:
 
 • Let’s create dummy variables for the seasons, holiday, and our new day type variable
 
+```{r}
+seoul_train_rec_1 <- 
+  recipe(sum_rented_bike_count ~ ., data=seoul_train) |>
+  update_role(date, new_role = 'ID') |>
+  step_mutate(
+    day_name = wday(date, label=TRUE),
+    day_type = factor(
+      ifelse(
+        day_name %in% c('Mon', 'Tue', 'Wed','Thu','Fri'), 
+        'Weekday',
+        'Weekend')
+      )
+    ) |>
+  step_dummy(seasons, holiday, day_type, one_hot = FALSE)|>
+  step_normalize(all_numeric_predictors()) |>
+  step_rm(day_name)
+seoul_train_rec_1
+```
+
 For the 2nd recipe:
 
 • Do the same steps as above.
 
 • Add in interactions between seasons and holiday, seasons and temp, temp and rainfall. For the seasons interactions, you can use starts_with() to create the proper interactions.
+
+```{r}
+seoul_train_rec_2 <- 
+  recipe(sum_rented_bike_count ~ ., data=seoul_train) |>
+  update_role(date, new_role = 'ID') |>
+  step_mutate(
+    day_name = wday(date, label=TRUE),
+    day_type = factor(
+      ifelse(
+        day_name %in% c('Mon', 'Tue', 'Wed','Thu','Fri'), 
+        'Weekday',
+        'Weekend')
+      )
+    ) |>
+  step_zv(all_predictors()) |>
+  step_corr(all_numeric_predictors(), threshold = 0.9) |>
+  step_dummy(seasons, holiday, day_type, one_hot = FALSE)|>
+  step_normalize(all_numeric_predictors()) |>
+  step_rm(day_name)|>
+step_interact(
+  terms = ~ (`seasons_Spring` + `seasons_Summer` + `seasons_Winter`):`holiday_No.Holiday` +
+           (`seasons_Spring` + `seasons_Summer` + `seasons_Winter`):mean_celcius_temp +
+           mean_celcius_temp:mean_rainfall
+)
+seoul_train_rec_2
+```
 
 For the 3rd recipe:
 
@@ -263,12 +364,87 @@ For the 3rd recipe:
 
 • Add in quadratic terms for each numeric predictor
 
+```{r}
+
+seoul_train_rec_3 <- 
+  recipe(sum_rented_bike_count ~ ., data=seoul_train) |>
+  update_role(date, new_role = 'ID') |>
+  step_mutate(
+    day_name = wday(date, label=TRUE),
+    day_type = factor(
+      ifelse(
+        day_name %in% c('Mon', 'Tue', 'Wed','Thu','Fri'), 
+        'Weekday',
+        'Weekend')
+      )
+    ) |>
+  step_dummy(seasons, holiday, day_type, one_hot = FALSE)|>
+  step_normalize(all_numeric_predictors()) |>
+  step_rm(day_name)|>
+  step_interact(
+  terms = ~ (`seasons_Spring` + `seasons_Summer` + `seasons_Winter`):`holiday_No.Holiday` +
+           (`seasons_Spring` + `seasons_Summer` + `seasons_Winter`):mean_celcius_temp +
+           mean_celcius_temp:mean_rainfall
+)|>
+  step_poly(sum_rainfall, sum_snowfall, mean_celcius_temp, mean_percent_humidity, 
+          mean_wind_speed, mean_visib, mean_dew_point_temp, mean_solar_rad, 
+          mean_rainfall, mean_snowfall, degree = 2) 
+  
+seoul_train_rec_3
+```
+
 Now set up our linear model fit to use the “lm” engine.
 
+```{r}
+seoul_mod <-linear_reg() |>
+  set_engine('lm')
+```
+
+```{r}
+seoul_wfl1 <- workflow() |>
+  add_recipe(seoul_train_rec_1) |>
+  add_model(seoul_mod)
+seoul_wfl1
+seoul_wfl2 <- workflow() |>
+  add_recipe(seoul_train_rec_2) |>
+  add_model(seoul_mod)
+seoul_wfl2
+seoul_wfl3 <- workflow() |>
+  add_recipe(seoul_train_rec_3) |>
+  add_model(seoul_mod)
+seoul_wfl3
+```
+
+```{r}
+seoul_fit1 <- seoul_wfl1 |>
+  fit(seoul_train)
+seoul_fit1 |>
+  tidy()
+```
+
 Fit the models using 10 fold CV via fit_resamples() and consider the training set CV error to choose a best model.
+
+```{r}
+seoul_10_fold <- vfold_cv(seoul_train, 10)
+cv_fits1 <- seoul_wfl1 |>
+  fit_resamples(seoul_10_fold)
+cv_fits2 <- seoul_wfl2 |>
+  fit_resamples(seoul_10_fold)
+cv_fits3 <- seoul_wfl3 |>
+  fit_resamples(seoul_10_fold)
+rbind(cv_fits1 |> collect_metrics() |> filter(.metric == 'rmse'),
+      cv_fits2 |> collect_metrics() |> filter(.metric == 'rmse'),
+      cv_fits3 |> collect_metrics() |> filter(.metric == 'rmse')) |>
+  mutate(Model= c('Model 1', 'Model 2', 'Model 3')) |>
+  select(Model, mean, n, std_err)
+```
 
 Using your ‘best’ model, fit the model to the entire training data set (use the last_fit() function).
 
 • Compute the RMSE metric on the test set.
 
 • Obtain the final model (fit on the entire training set) coefficient table using extract_fit_parsnip() and tidy().
+
+```{r}
+best_mod_fit <- last_fit(seoul_wfl1, split=seoul_data)
+```
